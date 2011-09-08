@@ -1,23 +1,57 @@
 #!/usr/bin/env escript
 
 main(Args) ->
-    io:format("~s~n", [printable(parse_args(Args))]).
+    Options = parse_args(Args),
+    case lists:keymember(help, 1, Options) of
+        true ->
+            help(), halt(0);
+        false ->
+            configure(Options)
+    end.
+
+help() ->
+    io:format(
+"`configure' configures this package to adapt to any supported system.
+
+Usage: ./configure [OPTIONS]
+
+Configuration:~n"),
+
+    F = fun({Thing, Comments}) ->
+            io:format("~s   ~s", [Thing, Comments]);
+           (Thing2) ->
+            io:format("~s", [Thing2])
+        end,
+    lists:foreach(F, args()).
+
+configure(Options) ->
+    io:format("~s~n", [printable(Options)]).
 
 parse_args(Args) ->
-    lists:flatten(lists:reverse(
-        clean(lists:foldl(fun(Arg, Conf) -> Conf ++ parse(Arg) end, [], Args)))).
+    lists:flatten(lists:foldl(fun(Arg, Conf) -> [parse(Arg)|Conf] end, [], Args)).
 
 parse(Arg) when is_list(Arg) ->
-    clean(lists:map(fun(E) -> match(Arg, E) end, args())).
+    first_match(Arg, args()).
 
-match(Arg, {Rx, Settings, Captures}) ->
+first_match(Arg, []) ->
+    io:format("Unrecognised Option(s) ~s~n", [Arg]),
+    halt(1);
+first_match(Arg, [Opt|Rest]) ->
+    case match(Arg, Opt) of
+        undefined ->
+            first_match(Arg, Rest);
+        Match ->
+            Match
+    end.
+
+match(Arg, {Rx, Settings, Captures, Filter}) ->
     case re:run(Arg, Rx, [global, {capture, Captures,list}]) of
         {match, [Matches]} when is_list(Matches) ->
             case Settings of
-                [_|_] ->
-                    lists:zip(Matches, Settings);
-                merge ->
-                    list_to_tuple(Matches)
+                S when is_list(S) ->
+                    lists:zip(filter(Matches, Filter), Settings);
+                Merge when is_function(Merge) ->
+                    Merge(filter(Matches, Filter))
             end;
         _Other ->
             undefined
@@ -25,14 +59,39 @@ match(Arg, {Rx, Settings, Captures}) ->
 
 args() ->
     [
-        {"--enable-(?<thing>.*)", [enabled], [thing]},
-        {"--disable-(?<thing>.*)", [disabled], [thing]},
-        {"--with-(?<thing>.*)=(?<where>.*)", merge, [thing, where]},
-        {"--option"}
+        {"--enable-(?<thing>.*)", [enabled], [thing],
+            [{"64bit", "Enable 64bit mode (ignored where not applicable)"},
+             {"64bit-darwin", "Default for Snow Leopard and above"},
+             {"drcp", "Enable DRCP (OCI >= 11g only)"}]},
+        {"--disable-(?<thing>.*)", [disabled], [thing],
+            [{"64bit", "Force 32bit mode"},
+             {"64bit-darwin", "Force 32bit mode on darwin-64"},
+             {"drcp", "Disable Database Resident Connection Pooling "
+                      "(default for OCI < 11g"}]},
+        {"--with-(?<thing>.*)=(?<where>.*)", list_to_tuple, [thing, where],
+            [{"oci", "Location of the OCI install"},
+             {"oracle-home", "Override ORACLE_HOME environment variable"}]},
+        {"--(?<option>.*)",
+            fun([X]) -> {erlang:list_to_atom(X), enabled} end, [option],
+            [{"verbose", "Print lots of info out during configure process"},
+             {"help", "Print out help and exit"}]}
     ].
 
-clean(Args) ->
-    [ X || X <- Args, X /= undefined ].
+filter(M, []) ->
+    M;
+filter(Match=[H|_], Filter) when is_list(Match) andalso is_integer(H) ->
+    case lists:any(fun(X) -> X == Match end, allowed(Filter)) of
+        false ->
+            io:format("Unrecognised Option(s) ~p~n", [Match]),
+            halt(1);
+        true ->
+            Match
+    end;
+filter(Matches, Filter) ->
+    lists:map(fun(X) -> filter(X, Filter) end, Matches).
+
+allowed(Filter) ->
+    lists:map(fun({E,_}) -> E;(N) -> N end, Filter).
 
 printable(Term) ->
     erl_prettypr:format(erl_parse:abstract(Term)).
