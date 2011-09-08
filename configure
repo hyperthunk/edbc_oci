@@ -1,4 +1,29 @@
 #!/usr/bin/env escript
+%% -----------------------------------------------------------------------------
+%%
+%% EDBC OCI - Configure Script
+%%
+%% Copyright (c) 2011 Tim Watson (watson.timothy@gmail.com)
+%%
+%% Permission is hereby granted, free of charge, to any person obtaining a copy
+%% of this software and associated documentation files (the "Software"), to deal
+%% in the Software without restriction, including without limitation the rights
+%% to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+%% copies of the Software, and to permit persons to whom the Software is
+%% furnished to do so, subject to the following conditions:
+%%
+%% The above copyright notice and this permission notice shall be included in
+%% all copies or substantial portions of the Software.
+%%
+%% THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+%% IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+%% FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+%% AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+%% LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+%% OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+%% THE SOFTWARE.
+%% -----------------------------------------------------------------------------
+%%
 
 main(Args) ->
     Options = parse_args(Args),
@@ -19,7 +44,7 @@ parse(Arg) when is_list(Arg) ->
     first_match(Arg, args()).
 
 first_match(Arg, []) ->
-    abort("Unrecognised Option(s) ~s~n", [Arg]);
+    exit_badarg(Arg);
 first_match(Arg, [Opt|Rest]) ->
     case match(Arg, Opt) of
         undefined ->
@@ -40,8 +65,11 @@ match(Arg, {Rx, Settings, Captures, Filter}) ->
                     abort("Invalid Settings: ~p~n", [Other])
             end;
         _Other ->
-            undefined
+            exit_badarg(Arg)
     end.
+
+exit_badarg(Arg) ->
+    abort("Unrecognised Option(s) ~s~n", [Arg]).
 
 help() ->
     io:format(
@@ -82,6 +110,14 @@ rejoin_option(Thing, Rx, C) ->
 
 args() ->
     [
+        {"--(?<option>.*)",
+            fun([X]) -> {erlang:list_to_atom(X), enabled} end, [option],
+            [{"verbose", "Print lots of info out during configure process"},
+             {"help", "Print out help and exit"}]},
+        {"--(?<option>.*)=(?<value>.*)", fun erlang:list_to_tuple/1,
+        	[option, value],
+            [{"prefix", "Base install directory "
+                        "(default to ERL_LIBS or code:lib_dir)"}]},
         {"--enable-(?<thing>.*)", [enabled], [thing],
             [{"64bit", "Enable 64bit mode (ignored where not applicable)"},
              {"64bit-darwin", "Default for Snow Leopard and above"},
@@ -94,11 +130,7 @@ args() ->
         {"--with-(?<thing>.*)=(?<where>.*)", fun erlang:list_to_tuple/1, 
         		[thing, where],
             [{"oci", "Location of the OCI install"},
-             {"oracle-home", "Override ORACLE_HOME environment variable"}]},
-        {"--(?<option>.*)",
-            fun([X]) -> {erlang:list_to_atom(X), enabled} end, [option],
-            [{"verbose", "Print lots of info out during configure process"},
-             {"help", "Print out help and exit"}]}
+             {"oracle-home", "Override ORACLE_HOME environment variable"}]}
     ].
 
 filter(M, []) ->
