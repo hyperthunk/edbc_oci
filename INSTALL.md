@@ -43,13 +43,6 @@ And for Windows users:
 
     C:\Users\xn\w\edbc_oci> configure.bat --prefix=%ERL_LIBS% --disable-64bit
 
-### Erlang Dependencies
-
-You will need to fetch any missing dependencies in order to build from sources.
-You can do this by running the `bootstrap` script in the top directory.
-Running this script will install missing dependencies locally (into the `lib`
-directory), without affecting your `code:lib_dir` and/or `ERL_LIBS` directories.
-
 ### Compiling and Installing
 
 Once you've configured the build, you may install the project's sources with
@@ -71,3 +64,15 @@ The equivalent windows commands:
 
     C:\Users\xn\w\edbc_oci> build.bat --skip-tests
     C:\Users\xn\w\edbc_oci> install.bat
+
+### Compiling by hand
+
+You can compile the sources manually if you wish. The procedure is quite
+simple, although you'll still have to run the configure script to generate
+some of the build configuration.
+
+Once you've run `configure` successfully, you should find the following
+files have been generated:
+
+- build.config      - main build configuration
+
