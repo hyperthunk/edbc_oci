@@ -1,0 +1,38 @@
+#!/usr/bin/env escript
+
+main(Args) ->
+    io:format("~s~n", [printable(parse_args(Args))]).
+
+parse_args(Args) ->
+    lists:flatten(lists:reverse(
+        clean(lists:foldl(fun(Arg, Conf) -> Conf ++ parse(Arg) end, [], Args)))).
+
+parse(Arg) when is_list(Arg) ->
+    clean(lists:map(fun(E) -> match(Arg, E) end, args())).
+
+match(Arg, {Rx, Settings, Captures}) ->
+    case re:run(Arg, Rx, [global, {capture, Captures,list}]) of
+        {match, [Matches]} when is_list(Matches) ->
+            case Settings of
+                [_|_] ->
+                    lists:zip(Matches, Settings);
+                merge ->
+                    list_to_tuple(Matches)
+            end;
+        _Other ->
+            undefined
+    end.
+
+args() ->
+    [
+        {"--enable-(?<thing>.*)", [enabled], [thing]},
+        {"--disable-(?<thing>.*)", [disabled], [thing]},
+        {"--with-(?<thing>.*)=(?<where>.*)", merge, [thing, where]},
+        {"--option"}
+    ].
+
+clean(Args) ->
+    [ X || X <- Args, X /= undefined ].
+
+printable(Term) ->
+    erl_prettypr:format(erl_parse:abstract(Term)).
