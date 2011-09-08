@@ -9,21 +9,6 @@ main(Args) ->
             configure(Options)
     end.
 
-help() ->
-    io:format(
-"`configure' configures this package to adapt to any supported system.
-
-Usage: ./configure [OPTIONS]
-
-Configuration:~n"),
-
-    F = fun({Thing, Comments}) ->
-            io:format("~s   ~s", [Thing, Comments]);
-           (Thing2) ->
-            io:format("~s", [Thing2])
-        end,
-    lists:foreach(F, args()).
-
 configure(Options) ->
     io:format("~s~n", [printable(Options)]).
 
@@ -34,8 +19,7 @@ parse(Arg) when is_list(Arg) ->
     first_match(Arg, args()).
 
 first_match(Arg, []) ->
-    io:format("Unrecognised Option(s) ~s~n", [Arg]),
-    halt(1);
+    abort("Unrecognised Option(s) ~s~n", [Arg]);
 first_match(Arg, [Opt|Rest]) ->
     case match(Arg, Opt) of
         undefined ->
@@ -51,10 +35,49 @@ match(Arg, {Rx, Settings, Captures, Filter}) ->
                 S when is_list(S) ->
                     lists:zip(filter(Matches, Filter), Settings);
                 Merge when is_function(Merge) ->
-                    Merge(filter(Matches, Filter))
+                    Merge(filter(Matches, Filter));
+                Other ->
+                    abort("Invalid Settings: ~p~n", [Other])
             end;
         _Other ->
             undefined
+    end.
+
+help() ->
+    io:format(
+"`configure' configures this package to adapt to any supported system.
+
+Usage: ./configure [OPTIONS]
+
+Options:~n"),
+    Indent = "    ",
+    F = fun({Thing, Comments}, {Rx, _, C, _}) ->
+            Text = rejoin_option(Thing, Rx, C),
+            Spacer = lists:concat(lists:duplicate(28 - length(Text), " ")),
+            io:format("~s~s~s~s~n", [Indent, Text, Spacer, Comments]);
+           (break, _) ->
+            io:format("~n");
+           (Thing2, _) ->
+            io:format("~s~p~n", [Indent, Thing2])
+        end,
+    [ F(I, A) || A <- args(), I <- (element(4, A) ++ [break]) ].
+
+rejoin_option(Thing, Rx, C) ->
+    case re:run(Rx, "\\(\?\<([^\>]+)\>[^\\)]*\\)", [global, {capture, [1], list}]) of
+        {match, Matches} ->
+            %% NB: our ordering comes from the matches themselves
+            Indexes = erlang:tl([ string:str(C, [list_to_atom(lists:nth(1, M))]) ||
+                                   M <- Matches ]),
+            lists:foldl(fun(Idx, Acc) when Idx >= 0 ->
+                            re:replace(Acc, "(\\([^\\)]*\\))",
+                                       string:to_upper(atom_to_list(lists:nth(Idx, C))),
+                                       [ungreedy, {return,list}]);
+                           (_, Acc) -> Acc
+                        end,
+                        re:replace(Rx, "(\\([^\\)]*\\))", Thing, [ungreedy, {return,list}]),
+                        Indexes);
+        _ ->
+            Rx
     end.
 
 args() ->
@@ -67,8 +90,9 @@ args() ->
             [{"64bit", "Force 32bit mode"},
              {"64bit-darwin", "Force 32bit mode on darwin-64"},
              {"drcp", "Disable Database Resident Connection Pooling "
-                      "(default for OCI < 11g"}]},
-        {"--with-(?<thing>.*)=(?<where>.*)", list_to_tuple, [thing, where],
+                      "(default for OCI < 11g)"}]},
+        {"--with-(?<thing>.*)=(?<where>.*)", fun erlang:list_to_tuple/1, 
+        		[thing, where],
             [{"oci", "Location of the OCI install"},
              {"oracle-home", "Override ORACLE_HOME environment variable"}]},
         {"--(?<option>.*)",
@@ -82,8 +106,7 @@ filter(M, []) ->
 filter(Match=[H|_], Filter) when is_list(Match) andalso is_integer(H) ->
     case lists:any(fun(X) -> X == Match end, allowed(Filter)) of
         false ->
-            io:format("Unrecognised Option(s) ~p~n", [Match]),
-            halt(1);
+            abort("Unrecognised Option(s) ~p~n", [Match]);
         true ->
             Match
     end;
@@ -95,3 +118,6 @@ allowed(Filter) ->
 
 printable(Term) ->
     erl_prettypr:format(erl_parse:abstract(Term)).
+
+abort(Msg, Args) ->
+    io:format(Msg, Args), halt(1).
