@@ -25,8 +25,35 @@
 %% -----------------------------------------------------------------------------
 %%
 
+-record(check, {
+    name                :: string(),
+    require_values      :: [string()],
+    require_templates   :: [string()],
+    require_data        :: [term()]
+}).
+
+-record(template, {
+    name        :: string(),
+    data        :: string(),
+    outfile     :: string(),
+    checks      :: [#check{}]
+}).
+
+-record(env, {
+    os          = unknown           :: atom(),
+    arch        = unknown           :: integer() | atom(),
+    oci_vsn     = unknown           :: integer(),
+    ld_path     = []                :: [string()],
+    incl_path   = []                :: [string()],
+    erl_top     = code:root_dir()   :: string(),
+    erl_libs    = unknown           :: string() | atom(),
+    erts_vsn    = 
+        erlang:system_info(version) :: string()
+}).
+
 main(Args) ->
     Options = parse_args(Args),
+    put(verbose, proplists:get_value(verbose, Options)),
     case lists:keymember(help, 1, Options) of
         true ->
             help(), halt(0);
@@ -35,10 +62,207 @@ main(Args) ->
     end.
 
 configure(Options) ->
-    io:format("~s~n", [printable(Options)]).
+    io:format("~s~n", [printable(Options)]),
+    Env = inspect_env(Options),
+    io:format("~s~n", [printable(Env)]).
+    %Templates = load_templates(Options), 
+    %configure(Env, Templates, Options).
+
+configure(Env, Templates, Options) ->
+    Setup = lists:map(fun(T) -> 
+                         configure_template(T, Env, Options) end, Templates),
+    case has_errors(Setup) of
+        true ->
+            show_errors_and_exit(Setup);
+        false ->
+            apply_templates(Setup)
+    end.
+
+inspect_env(Options) ->
+    OptFile = relative_path(["build", "cache", "config.options"]),
+    log("Writing config.options to ~s~n", [OptFile]),
+    file:write_file(OptFile, printable(Options)),
+    run_inspect_env(OptFile, Options, false),
+    file:consult(relative_path(["build", "cache", "config.cache"])).
+
+run_inspect_env(OptFile, Options, true) ->
+    case locate_escript(proplists:get_value("erlang", Options)) of
+        {default, Exe} ->
+            log("Build environment inspection with [~s]~n", [Exe]),
+            run_external(Exe, OptFile);
+        Escript when is_list(Escript) ->
+            log("Build environment inspection with [~s]~n", [Escript]),
+            run_external(Escript, OptFile)
+    end;
+run_inspect_env(OptFile, Options, false) ->
+    case locate_escript(proplists:get_value("erlang", Options)) of
+        {default, _Exe} ->
+            Path = relative_path(["build", "load_env.erl"]),
+            Mod = case compile:file(Path, 
+                        [verbose,report_errors,report_warnings,export_all,
+                         {outdir,relative_path(["build", "cache"])}]) of
+                T when is_tuple(T) ->
+                    [H|Rest] = erlang:tuple_to_list(T),
+                    case H of
+                        ok ->
+                            ModName = erlang:hd(Rest),
+                            log("Running ~p using this (current) emulator~n", 
+                                [ModName]),
+                            code:add_patha(relative_path(["build", "cache"])),
+                            ModName:main([OptFile]);
+                        error ->
+                            io:format("Unable to compile load_env.erl - "
+                                      "trying as external escript command!"),
+                            run_inspect_env(OptFile, Options, true)
+                    end;
+                error ->
+                    run_inspect_env(OptFile, Options, true)
+            end;
+        Escript when is_list(Escript) ->
+            run_external(Escript, OptFile)
+    end.
+
+run_external(Escript, OptFile) ->
+    LoaderResults = sh(Escript ++ " " ++ 
+                       relative_path(["build", "load_env.erl"]) ++ " " ++
+                       OptFile),
+    case LoaderResults of
+        {error, {_Rc, _Data}=Err} ->
+            %% TODO: deal with output messages to the user
+            abort("ERROR: ~p~n", [Err]);
+        {ok, StdOut} ->
+            io:format("OK: ~p~n", [StdOut])
+    end.
+
+sh(Command0) ->
+    Command = case os:type() of
+       {win32,_} ->
+            [Exe|Rest] = string:tokens(Command0, " "),
+            BaseName = filename:basename(Exe, ".exe"),
+            BatchFile = BaseName ++ ".bat",
+            string:join([BatchFile|Rest], " ");
+        _ ->
+            Command0
+    end,
+    PortSettings = [exit_status, {line, 16384}, use_stdio, stderr_to_stdout, hide],
+    sh_loop(open_port({spawn, Command}, PortSettings), []).
+
+sh_loop(Port, Acc) ->
+    receive
+        {Port, {data, {eol, Line}}} ->
+            sh_loop(Port, [Line ++ "\n" | Acc]);
+        {Port, {data, {noeol, Line}}} ->
+            sh_loop(Port, [Line | Acc]);
+        {Port, {exit_status, 0}} ->
+            {ok, lists:flatten(lists:reverse(Acc))};
+        {Port, {exit_status, Rc}} ->
+            {error, {Rc, lists:flatten(lists:reverse(Acc))}}
+    end.
+
+locate_escript(undefined) ->
+    default_escript_exe();
+locate_escript(Path) ->
+    case find_executable("escript", Path) of
+        false ->
+            locate_escript(undefined);
+        Exe ->
+            Exe
+    end.
+
+default_escript_exe() ->
+    {default, find_executable("escript", filename:join(code:root_dir(), "bin"))}.
+
+find_executable(Exe) ->
+    find_executable(Exe, undefined).
+
+find_executable(Exe, undefined) when is_list(Exe) ->
+    os:find_executable(executable_name(Exe));
+find_executable(Exe, Path) when is_list(Exe) andalso is_list(Path) ->
+    os:find_executable(executable_name(Exe), Path).
+
+executable_name(Exe) ->
+    case os:type() of
+        {win32,_} ->
+            case lists:suffix(".exe", Exe) of
+                true ->
+                    Exe;
+                false ->
+                    string:join([Exe, "exe"], ".")
+            end;
+        _ ->
+            Exe
+    end.
+
+check_arch(Arch) ->
+    case wordsize() =:= Arch of
+        true -> enabled;
+        false -> disabled
+    end.
+
+wordsize() ->
+    try erlang:system_info({wordsize, external}) of
+        Val ->
+            integer_to_list(8 * Val)
+    catch
+        error:badarg ->
+            integer_to_list(8 * erlang:system_info(wordsize))
+    end.
+
+inspect_os() ->
+    case os:type() of
+        {unix, undefined} ->
+            posix;
+        {unix, Other} ->
+            Other;
+        {win32, _} ->
+            windows
+    end.
+
+load_templates() ->
+    [
+        #template{name="Build Config", outfile="rebar.config",
+                  checks=[
+                      #check{name="arch"}
+                      #check{name="oci", 
+                             require_values=["64bit", "oci", "drcp"]}
+                  ]},
+        #template{name="Makefile", outfile="Makefile",
+                  checks=[
+                      #check{name="otp-version", 
+                             require_data=["R14.*"]},
+                      #check{name="build-config", 
+                             require_templates=["Build Config"]}
+                  ]}
+    ].
+
+check("arch", _Env, _Options) ->
+    ok.
+
+configure_template(_Template, _Env, _Options) -> ok.
+
+has_errors(_Setup) -> false.
+
+show_errors_and_exit(_Setup) -> halt(1).
+
+apply_templates(_Setup) -> ok.
 
 parse_args(Args) ->
-    lists:flatten(lists:foldl(fun(Arg, Conf) -> [parse(Arg)|Conf] end, [], Args)).
+    Opts = lists:flatten(lists:foldl(
+        fun(Arg, Conf) -> [parse(Arg)|Conf] end, [], Args)),
+    apply_defaults(Opts).
+
+apply_defaults(Opts) ->
+    lists:foldl(
+        fun({Thing,_,Default}, Acc) ->
+            case lists:keymember(Thing, 1, Acc) of
+                true ->
+                    Acc;
+                false ->
+                    lists:keystore(Thing, 1, Acc, {Thing, Default})
+            end
+        end,
+        lists:keysort(1, Opts),
+        [ I || A <- args(), I <- element(4, A) ]).
 
 parse(Arg) when is_list(Arg) ->
     first_match(Arg, args()).
@@ -56,16 +280,22 @@ first_match(Arg, [Opt|Rest]) ->
 match(Arg, {Rx, Settings, Captures, Filter}) ->
     case re:run(Arg, Rx, [global, {capture, Captures,list}]) of
         {match, [Matches]} when is_list(Matches) ->
-            case Settings of
-                S when is_list(S) ->
-                    lists:zip(filter(Matches, Filter), Settings);
-                Merge when is_function(Merge) ->
-                    Merge(filter(Matches, Filter));
-                Other ->
-                    abort("Invalid Settings: ~p~n", [Other])
+            Filtered = filter(Matches, Filter),
+            case Filtered of
+                [] ->
+                    undefined;
+                Found ->
+                    case Settings of
+                        S when is_list(S) ->
+                            lists:zip(Found, Settings);
+                        Merge when is_function(Merge) ->
+                            Merge(Matches);
+                        Other ->
+                            abort("Invalid Settings: ~p~n", [Other])
+                    end
             end;
-        _Other ->
-            exit_badarg(Arg)
+        _NonMatch ->
+            undefined
     end.
 
 exit_badarg(Arg) ->
@@ -79,10 +309,19 @@ Usage: ./configure [OPTIONS]
 
 Options:~n"),
     Indent = "    ",
-    F = fun({Thing, Comments}, {Rx, _, C, _}) ->
+    F = fun({Thing, Comments, Default}, {Rx, _, C, _}) ->
             Text = rejoin_option(Thing, Rx, C),
             Spacer = lists:concat(lists:duplicate(28 - length(Text), " ")),
-            io:format("~s~s~s~s~n", [Indent, Text, Spacer, Comments]);
+            case Default of
+                undefined ->
+                    io:format("~s~s~s~s~n", [Indent, Text, Spacer, Comments]);
+                Atom when is_atom(Atom) ->
+                    io:format("~s~s~s~s [~p]~n",
+                        [Indent, Text, Spacer, Comments, Default]);
+                String when is_list(String) ->
+                    io:format("~s~s~s~s [~s]~n",
+                        [Indent, Text, Spacer, Comments, Default])
+            end;
            (break, _) ->
             io:format("~n");
            (Thing2, _) ->
@@ -91,46 +330,56 @@ Options:~n"),
     [ F(I, A) || A <- args(), I <- (element(4, A) ++ [break]) ].
 
 rejoin_option(Thing, Rx, C) ->
-    case re:run(Rx, "\\(\?\<([^\>]+)\>[^\\)]*\\)", [global, {capture, [1], list}]) of
+    case re:run(Rx, "\\(\?\<([^\>]+)\>[^\\)]*\\)", 
+                [global, {capture, [1], list}]) of
         {match, Matches} ->
             %% NB: our ordering comes from the matches themselves
-            Indexes = erlang:tl([ string:str(C, [list_to_atom(lists:nth(1, M))]) ||
-                                   M <- Matches ]),
+            Indexes = erlang:tl([ string:str(C,
+                [list_to_atom(lists:nth(1, M))]) || M <- Matches ]),
             lists:foldl(fun(Idx, Acc) when Idx >= 0 ->
                             re:replace(Acc, "(\\([^\\)]*\\))",
-                                       string:to_upper(atom_to_list(lists:nth(Idx, C))),
-                                       [ungreedy, {return,list}]);
+                                string:to_upper(atom_to_list(lists:nth(Idx, C))),
+                                    [ungreedy, {return,list}]);
                            (_, Acc) -> Acc
                         end,
-                        re:replace(Rx, "(\\([^\\)]*\\))", Thing, [ungreedy, {return,list}]),
+                        re:replace(Rx, "(\\([^\\)]*\\))",
+                            Thing, [ungreedy, {return,list}]),
                         Indexes);
         _ ->
             Rx
+    end.
+
+code_dir() ->
+    case os:getenv("ERL_LIBS") of
+        false -> code:lib_dir();
+        Path  -> Path
     end.
 
 args() ->
     [
         {"--(?<option>.*)",
             fun([X]) -> {erlang:list_to_atom(X), enabled} end, [option],
-            [{"verbose", "Print lots of info out during configure process"},
-             {"help", "Print out help and exit"}]},
+            [{"verbose", 
+                "Print lots of info out during configure process", disabled},
+             {"help", "Print out help and exit", undefined}]},
         {"--(?<option>.*)=(?<value>.*)", fun erlang:list_to_tuple/1,
-        	[option, value],
-            [{"prefix", "Base install directory "
-                        "(default to ERL_LIBS or code:lib_dir)"}]},
+            [option, value],
+            [{"prefix", "Base install directory", code_dir()},
+             {"erlang", "Path to erl, erlc and escript", code_dir()}]},
         {"--enable-(?<thing>.*)", [enabled], [thing],
-            [{"64bit", "Enable 64bit mode (ignored where not applicable)"},
-             {"64bit-darwin", "Default for Snow Leopard and above"},
-             {"drcp", "Enable DRCP (OCI >= 11g only)"}]},
+            [{"64bit", "Enable 64bit mode (Arch Dependant)", undefined},
+             {"64bit-darwin", 
+                "Defaults to 32bit OCI builds", disabled},
+             {"drcp", "Enable DRCP (OCI >= 11g only)", undefined}]},
         {"--disable-(?<thing>.*)", [disabled], [thing],
-            [{"64bit", "Force 32bit mode"},
-             {"64bit-darwin", "Force 32bit mode on darwin-64"},
+            [{"64bit", "Force 32bit build on 64bit platforms", undefined},
              {"drcp", "Disable Database Resident Connection Pooling "
-                      "(default for OCI < 11g)"}]},
-        {"--with-(?<thing>.*)=(?<where>.*)", fun erlang:list_to_tuple/1, 
-        		[thing, where],
-            [{"oci", "Location of the OCI install"},
-             {"oracle-home", "Override ORACLE_HOME environment variable"}]}
+                      "(when OCI < 11g)", undefined}]},
+        {"--with-(?<thing>.*)=(?<where>.*)", fun erlang:list_to_tuple/1,
+                [thing, where],
+            [{"oci", "Location of the OCI install", "/usr/local/lib/oracle"},
+             {"oracle-home", "Override ORACLE_HOME environment variable",
+                "/usr/local/lib/oracle"}]}
     ].
 
 filter(M, []) ->
@@ -138,18 +387,34 @@ filter(M, []) ->
 filter(Match=[H|_], Filter) when is_list(Match) andalso is_integer(H) ->
     case lists:any(fun(X) -> X == Match end, allowed(Filter)) of
         false ->
-            abort("Unrecognised Option(s) ~p~n", [Match]);
+            [];
         true ->
             Match
     end;
 filter(Matches, Filter) ->
-    lists:map(fun(X) -> filter(X, Filter) end, Matches).
+    [ X || X <- lists:map(fun(X) -> filter(X, Filter) end, Matches),
+           X =/= [] ].
 
 allowed(Filter) ->
-    lists:map(fun({E,_}) -> E;(N) -> N end, Filter).
+    lists:map(fun({E,_,_}) -> E;(N) -> N end, Filter).
+
+relative_path(SuffixList) ->
+    filename:absname(filename:join(filename:dirname(escript:script_name()), 
+                     filename:join(SuffixList))).
 
 printable(Term) ->
-    erl_prettypr:format(erl_parse:abstract(Term)).
+    erl_prettypr:format(erl_parse:abstract(Term))  ++ ".".
+
+log(Msg) ->
+    log(Msg, []).
+
+log(Msg, Args) ->
+    case get(verbose) of
+        enabled ->
+            io:format(Msg, Args);
+        disabled ->
+            ok
+    end.
 
 abort(Msg, Args) ->
     io:format(Msg, Args), halt(1).
