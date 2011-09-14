@@ -1,0 +1,7 @@
+#/usr/bin/env sh
+
+pushd .
+cd build
+rebar get-deps compile 
+rebar skip_deps=true escriptize
+popd
