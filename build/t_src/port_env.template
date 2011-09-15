@@ -1,0 +1,40 @@
+
+{port_sources, [{{ config.source_files }}]}.
+
+{so_specs, [
+    {"priv/bin/liboci_drv.so", [{{ config.object_files }}]}
+]}.
+
+{port_envs, [
+    {"DRV_CFLAGS", "$DRV_CFLAGS -Wall -Werror -I c_src "
+                   "{% for incl in oci_data.incl_path %}-I {{ incl }} {% endfor %}"
+                   "{% if options.debug %} -DDEBUG {% endif %}"},
+
+    %% Define default flags for enabling/disable 64 bit build
+    {"-32$", "LDFLAGS", "-m32"},
+    {"-64$", "LDFLAGS", "-m64"},
+
+    %% Look at the user supplied options - this overrides LDFLAGS if required
+{% ifequal oci_data.arch "x86" %}
+    {% ifequal options.arch64bit "enabled" %}
+    %% you OCI libraries were compiled for 32-bit wordsize, 
+    %% therefore the --enable-arch64bit option is being ignored...
+    {% endifequal %}
+    {"LDFLAGS", "{{ config.arch_32 }}"},
+{% else %}
+    {% ifequal oci_data.arch "x86_64" %}
+        {% ifequal options.arch64bit "enabled" %}
+    {"LDFLAGS", "{{ config.arch_64 }}"},
+        {% endifequal %}
+    {% endifequal %}
+{% endifequal %}
+
+    %% Solaris specific flags
+    {"solaris.*", "DRV_LDFLAGS", "$DRV_LDFLAGS -lrt"},
+
+    %% OS X Flags (generic)
+    {"darwin.*", "LDFLAGS",
+        "-fPIC -bundle -flat_namespace -undefined suppress $LDFLAGS"},
+]}.
+
+{so_name, "liboci_drv.so"}.

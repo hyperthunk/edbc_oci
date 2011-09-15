@@ -35,21 +35,23 @@ options() ->
             [{"prefix", "Base install directory", env:code_dir()},
              {"erlang", "Path to erl, erlc and escript", code:root_dir()}]},
         {"--enable-(?<thing>.*)", [enabled], [thing],
-            [{"64bit", "Enable 64bit mode (Arch Dependant)", undefined},
-             {"64bit-darwin",
+            [{"arch64bit", "Enable 64bit mode (Arch Dependant)", undefined},
+             {"darwin_64bit",
                 "Defaults to 32bit OCI builds", disabled},
-             {"drcp", "Enable DRCP (OCI >= 11g only)", undefined}]},
+             {"drcp", "Enable DRCP (OCI >= 11g only)", undefined},
+             {"debug", "Enable debug builds", disable}]},
         {"--disable-(?<thing>.*)", [disabled], [thing],
-            [{"64bit", "Force 32bit build on 64bit platforms", undefined},
+            [{"arch64bit", "Force 32bit build on 64bit platforms", undefined},
              {"drcp", "Disable Database Resident Connection Pooling "
                       "(default OCI < 11g)", undefined}]},
         {"--with-(?<thing>.*)=(?<where>.*)", fun erlang:list_to_tuple/1,
                 [thing, where],
             [{"oci", "Location of the OCI install", "/usr/local/oracle"},
-             {"oracle-home", "Override ORACLE_HOME environment variable",
+             {"oracle_home", "Override ORACLE_HOME environment variable",
                 "/usr/local/oracle"},
-             {"c-compiler", "Full path to C Compiler (Platform Dependant)",
-                undefined}]}
+             {"cc", "Full path to C Compiler (Platform Dependant)",
+                undefined},
+             {"rebar", "Location of rebar binary", "$HOME/bin/rebar"}]}
     ].
 
 rules() ->
@@ -61,9 +63,29 @@ rules() ->
                     include="oci.h",
                     find="libclntsh",
                     path="${oci}",
-                    %% arch will be determined at runtime...
                     incl_path=["${oci}/sdk/include"],
                     code_path=["${oci}"]
                 }
         }
+    ]},
+    {templates, [
+        #template{ name=port_env,
+                   pre_render=?MODULE,
+                   output="rebar.config",
+                   checks=[oci], data=[{oci, data}],
+                   defaults=[
+                        {source_files, [<<"\"c_src/*.c\"">>]},
+                        {object_files, [<<"\"c_src/*.o\"">>]},
+                        {arch_32, "%{cc:calculate_arch_flags('x86')}"},
+                        {arch_64, 
+                            "%{cc:calculate_arch_flags(environment.wordsize)}"}
+                   ]},
+        #template{ name=makefile,
+                   module=makefile_template,
+                   pre_render=?MODULE,
+                   output="Makefile",
+                   defaults=[{rebar, "${options.rebar}"}] }
     ]}].
+
+pre_render(T=#template{ defaults=Defaults }, _, _, _) ->
+    log:verbose("New Defaults: ~p~n", [Defaults]), T.
