@@ -17,7 +17,7 @@
     %% Look at the user supplied options - this overrides LDFLAGS if required
 {% ifequal oci_data.arch "x86" %}
     {% ifequal options.arch64bit "enabled" %}
-    %% you OCI libraries were compiled for 32-bit wordsize, 
+    %% your OCI library was compiled for 32-bit architectures, 
     %% therefore the --enable-arch64bit option is being ignored...
     {% endifequal %}
     {"LDFLAGS", "{{ config.arch_32 }}"},
@@ -38,3 +38,7 @@
 ]}.
 
 {so_name, "liboci_drv.so"}.
+
+{erl_opts, [warnings_as_error]}.
+{cover_enabled, true}.
+{cover_print_enabled, true}.

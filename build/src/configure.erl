@@ -46,7 +46,7 @@ options() ->
                       "(default OCI < 11g)", undefined}]},
         {"--with-(?<thing>.*)=(?<where>.*)", fun erlang:list_to_tuple/1,
                 [thing, where],
-            [{"oci", "Location of the OCI install", "/usr/local/oracle"},
+            [{"oci", "Location of the OCI install", "/opt/usr/oracle"},
              {"oracle_home", "Override ORACLE_HOME environment variable",
                 "/usr/local/oracle"},
              {"cc", "Full path to C Compiler (Platform Dependant)",
