@@ -35,8 +35,9 @@ extern "C" {
 // NULL safe driver_free wrapper
 #define DRV_FREE(x) if (x != NULL) driver_free(x)
 
-static void* safe_driver_alloc(void*, size_t);
-static void* zalloc(void*, size_t);
+void* safe_driver_alloc(void*, size_t);
+void* zalloc(void*, size_t);
+PropList* plist_alloc(void*, int*);
 
 #ifdef _EDBC_OCI_HAVE_STDARG
 
@@ -44,7 +45,7 @@ static void* zalloc(void*, size_t);
 
 /* Tries to allocate heap space of 'size'. If this fails, the pointers
      in the varags array are freed one by one and the program fails. */
-    static void* try_driver_alloc(void*, size_t, void*, ...);
+    void* try_driver_alloc(void*, size_t, void*, ...);
 
 #endif
 

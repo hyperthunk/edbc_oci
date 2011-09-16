@@ -3,3 +3,5 @@ build/deps/
 Makefile
 build/ebin/
 rebar.config
+c_src/config.h
+rebuild

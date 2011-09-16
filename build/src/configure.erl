@@ -67,11 +67,17 @@ rules() ->
                     code_path=["${oci}"] }},
         #check{ name=stdarg, type=include, mandatory=false,
                 output="_EDBC_OCI_HAVE_STDARG",
-                data=#require{ include="stdarg.h", find="system" }}
+                data=#require{ include="stdarg.h" }},
+        #check{ name=stdint, type=include, mandatory=true,
+                output="_EDBC_OCI_HAVE_STDINT",
+                data=#require{ include="stdint.h" }}
     ]},
     {templates, [
-        #template{ name=config, pre_render=config_h,
-                   module=cconfig_h_template, checks=[stdarg] },
+        #template{ name=config, 
+                   pre_render=config_h,
+                   output="c_src/config.h",
+                   module=cconfig_h_template, 
+                   checks=[stdarg, stdint] },
         #template{ name=port_env,
                    pre_render=?MODULE,
                    output="rebar.config",
@@ -85,10 +91,9 @@ rules() ->
                    ]},
         #template{ name=makefile,
                    module=makefile_template,
-                   pre_render=?MODULE,
                    output="Makefile",
                    defaults=[{rebar, "${options.rebar}"}] }
     ]}].
 
-pre_render(T=#template{ defaults=Defaults }, _, _, _) ->
-    log:verbose("New Defaults: ~p~n", [Defaults]), T.
+pre_render(T=#template{ name=port_env }, _, _, _) ->
+    file:delete("rebar.config"), T.

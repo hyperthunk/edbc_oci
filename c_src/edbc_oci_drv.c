@@ -26,7 +26,7 @@
  *
  */
 
-#include "edbc_oci.h"
+#include "edbc_oci_drv.h"
 
 /* INTERNAL DATA & DATA STRUCTURES */
 
@@ -34,12 +34,69 @@
 #define NUM_SIZE_HEADERS 2
 #define FIRST_BINV_ENTRY 1
 
+/* PROTOCOL HANDLING FUNCTIONS */
+
+static bool
+decode_proplist(void *port, PropList **plist, int *szalloc,
+                const char *buf, int *index) {
+    int type, size;
+    long item_type;
+    PropList *list_head = (*plist = plist_alloc(port, szalloc));
+    if (DECODED(ei_get_type(buf, index, &type, &size))) {
+        int list_arity = 0;
+        if (DECODED(ei_decode_list_header(buf, index, &list_arity))) {
+            ASSERT(size == list_arity);
+            if(list_arity < 1) return false;
+
+            
+            for (int i = 0; i < list_arity; i++) {
+                if (!DECODED(ei_decode_tuple_header(buf, index, &size))) {
+                    return false;
+                }
+                if ((list_head->next = plist_alloc(port, szalloc)) != NULL) {
+                    *plist = (list_head = list_head->next);
+                    char *pkey = safe_driver_alloc(port, sizeof(char) * MAXATOMLEN);
+                    if (DECODED(ei_decode_atom(buf, index, pkey))) {
+                        list_head->name = pkey;
+                    }
+                    if (!DECODED(ei_decode_long(buf, index, &item_type))) {
+                        return false;
+                    }
+                    switch (item_type) {
+                    case EDBC_OCI_DRV_TYPE_STRING:
+                        if(!DECODED(ei_get_type(buf, index, &type, &size))) {
+                            return false;
+                        }
+                        ASSERT(type == ERL_STRING_EXT);
+                        TextBuffer *ptxt = zalloc(port, sizeof(TextBuffer));
+                        char *pval = safe_driver_alloc(port, sizeof(char) * ptxt->size);
+                        
+                        ptxt->size = size + 1;
+                        ptxt->data = pval;
+                        list_head->value.buffer = ptxt;
+                        if (!DECODED(ei_decode_string(buf, index, pval))) {
+                            return false;
+                        }
+                        break;
+                    case EDBC_OCI_DRV_TYPE_LONG:
+                        // ei_decode_long(buf, index, &number)
+                    default:
+                        // make error?
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    return false;
+};
+
 /* DRIVER CALLBACK FUNCTIONS */
 
 // Called by the emulator when the driver is starting.
 static ErlDrvData
 start_driver(ErlDrvPort port, char *buff) {
-    DriverData *d = zalloc(sizeof(DriverData));
+    DriverData *d = zalloc(port, sizeof(DriverData));
     if (d == NULL) {
         // TODO: use ERL_DRV_ERROR_ERRNO and provide out-of-memory info
         return ERL_DRV_ERROR_GENERAL;
@@ -53,7 +110,7 @@ start_driver(ErlDrvPort port, char *buff) {
 // Called by the emulator when the driver is stopping.
 static void
 stop_driver(ErlDrvData drv_data) {
-    
+
     driver_free(drv_data);
 };
 
@@ -75,28 +132,20 @@ call(ErlDrvData drv_data, unsigned int command, char *buf,
     int len, char **rbuf, int rlen, unsigned int *flags) {
 
     int i;
-    int type;
-    int size;
     int index = 0;
     int rindex = 0;
     char *data;
     DriverData *d = (DriverData*)drv_data;
 
-    if (!DECODED(ei_decode_version(buf, &index, &i))) {
-        return ERL_DRV_ERROR_BADARG;
-    }
+    if(!DECODED(ei_decode_version(buf, &index, &i))) {
+        return EDBC_OCI_DRV_ERROR_GENERAL;
+    };
 
     if (command == INIT_OCI_COMMAND) {
-        if (CHECK_TYPE(buf, &index, &type, &size))) {
-            CONSOLE("ei_get_type %s of size = %i\n", ((char*)&type), size);
-            ei_decode_tuple_header()
-            
-            
-            // TODO: pull options tuple instead
-            data = ALLOC(size + 1);
-            ei_decode_string(buf, &index, data);
-            INFO("Driver received data %s\n", data);
-            state = init_provider(d, data);
+        PropList *plist;
+        int szalloc = 0;
+        if (decode_proplist(d->port, &plist, &szalloc, buf, &index)) {
+            // do something with it....
         }
     }
 
@@ -151,6 +200,6 @@ static ErlDrvEntry driver_entry = {
     NULL                /* event */
 };
 
-DRIVER_INIT(erlxsl_drv) {
+DRIVER_INIT(liboci_drv) {
     return &driver_entry;
 }

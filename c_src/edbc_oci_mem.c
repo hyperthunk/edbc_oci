@@ -24,7 +24,7 @@
 
 #include "edbc_oci_mem.h"
 
-static void* zalloc(void *port, size_t size) {
+void* zalloc(void *port, size_t size) {
     void* res = safe_driver_alloc(port, size);
     if(res != NULL) {
         memset(res, '\0', size);
@@ -32,8 +32,7 @@ static void* zalloc(void *port, size_t size) {
     return res;
 };
 
-static void* 
-safe_driver_alloc(void *port, size_t size) {
+void* safe_driver_alloc(void *port, size_t size) {
     void *p = driver_alloc(size);
     if (p == NULL) {
         FAIL(port, "system_limit");
@@ -41,13 +40,22 @@ safe_driver_alloc(void *port, size_t size) {
     return p;
 };
 
+PropList* plist_alloc(void *port, int *szalloc) {
+    int allocated = *szalloc;
+    PropList *plist = NULL;
+    if ((plist = zalloc(port, sizeof(PropList))) != NULL) {
+        *szalloc = ++allocated;
+    }
+    return plist;
+};
+
 #ifdef _EDBC_OCI_HAVE_STDARG
 
-// TODO: and if not!? ;)
+// TODO: and if not!?
 
 /* Tries to allocate heap space of 'size'. If this fails, the pointers
      in the varags array are freed one by one and the program fails. */
-static void* try_driver_alloc(void *port, size_t size, void* pfree, ...) {
+void* try_driver_alloc(void *port, size_t size, void* pfree, ...) {
     void* val = driver_alloc(size);
     if (val == NULL) {
         va_list ap;
