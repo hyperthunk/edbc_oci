@@ -64,11 +64,14 @@ rules() ->
                     find="libclntsh",
                     path="${oci}",
                     incl_path=["${oci}/sdk/include"],
-                    code_path=["${oci}"]
-                }
-        }
+                    code_path=["${oci}"] }},
+        #check{ name=stdarg, type=include, mandatory=false,
+                output="_EDBC_OCI_HAVE_STDARG",
+                data=#require{ include="stdarg.h", find="system" }}
     ]},
     {templates, [
+        #template{ name=config, pre_render=config_h,
+                   module=cconfig_h_template, checks=[stdarg] },
         #template{ name=port_env,
                    pre_render=?MODULE,
                    output="rebar.config",
@@ -77,7 +80,7 @@ rules() ->
                         {source_files, [<<"\"c_src/*.c\"">>]},
                         {object_files, [<<"\"c_src/*.o\"">>]},
                         {arch_32, "%{cc:calculate_arch_flags('x86')}"},
-                        {arch_64, 
+                        {arch_64,
                             "%{cc:calculate_arch_flags(environment.wordsize)}"}
                    ]},
         #template{ name=makefile,

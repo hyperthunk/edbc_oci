@@ -1,3 +1,5 @@
 build/cache/
 build/deps/
 Makefile
+build/ebin/
+rebar.config

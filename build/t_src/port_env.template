@@ -34,7 +34,7 @@
 
     %% OS X Flags (generic)
     {"darwin.*", "LDFLAGS",
-        "-fPIC -bundle -flat_namespace -undefined suppress $LDFLAGS"},
+        "-fPIC -bundle -flat_namespace -undefined suppress $LDFLAGS"}
 ]}.
 
 {so_name, "liboci_drv.so"}.
