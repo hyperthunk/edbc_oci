@@ -33,14 +33,14 @@
 
 %% TODO: tighten up the logical around choosing -arch flags
 {port_envs, [
-    {"DRV_CFLAGS", "$DRV_CFLAGS -Wall -Werror -I c_src -std=c99 "
-                   "{% for incl in oci_data.incl_path %}-I {{ incl }} {% endfor %}"
-                   "{% if options.debug %} -DDEBUG {% endif %}"
+    {"DRV_CFLAGS", 
 {%ifequal oci_data.arch "x86" %}
-                    "{{ config.arch_32}}"
-{% else %}
-                    "{{ config.arch_64 }}"
-{% endif %}                   
+                    "$DRV_CFLAGS {{ config.arch_32}}"
+{% else %}"{{ config.arch_64 }}"{% endifequal %}
+                    " -Wall -Werror -I c_src -std=c99 "
+                    "{% for incl in oci_data.incl_path %}-I {{ incl }} {% endfor %}"
+                    " $ERL_CFLAGS"
+                    "{% if options.debug %} -DDEBUG {% endif %}"
     },
 
     %% Define default flags for enabling/disable 64 bit build
@@ -50,7 +50,7 @@
     %% Look at the user supplied options - this overrides LDFLAGS if required
 {% ifequal oci_data.arch "x86" %}
     {% ifequal options.arch64bit "enabled" %}
-    %% your OCI library was compiled for 32-bit architectures, 
+    %% your OCI library was compiled for 32-bit architectures,
     %% therefore the --enable-arch64bit option is being ignored...
     {% endifequal %}
     {"LDFLAGS", "{{ config.arch_32 }}"},
