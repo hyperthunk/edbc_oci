@@ -41,48 +41,54 @@ decode_proplist(void *port, PropList **plist, int *szalloc,
                 const char *buf, int *index) {
     int type, size;
     long item_type;
+    bool succeess = false;
     PropList *list_head = (*plist = plist_alloc(port, szalloc));
     if (DECODED(ei_get_type(buf, index, &type, &size))) {
         int list_arity = 0;
         if (DECODED(ei_decode_list_header(buf, index, &list_arity))) {
             ASSERT(size == list_arity);
-            if(list_arity < 1) return false;
+            if(list_arity < 1) {
+                succeess = false;
+            } else {
+                for (int i = 0; i < list_arity; i++) {
+                    if (!DECODED(ei_decode_tuple_header(buf, index, &size))) {
+                        succeess = false;
+                        break;
+                    }
+                    if ((list_head->next = plist_alloc(port, szalloc)) != NULL) {
+                        *plist = (list_head = list_head->next);
+                        char *pkey = safe_driver_alloc(port, sizeof(char) * MAXATOMLEN);
+                        if (DECODED(ei_decode_atom(buf, index, pkey))) {
+                            list_head->name = pkey;
+                        }
+                        if (!DECODED(ei_decode_long(buf, index, &item_type))) {
+                            succeess = false;
+                            break;
+                        }
+                        list_head->type = item_type;
+                        switch (item_type) {
+                        case EDBC_OCI_DRV_TYPE_STRING:
+                            if(!DECODED(ei_get_type(buf, index, &type, &size))) {
+                                succeess = false;
+                                break;
+                            }
+                            ASSERT(type == ERL_STRING_EXT);
+                            TextBuffer *ptxt = zalloc(port, sizeof(TextBuffer));
+                            char *pval = safe_driver_alloc(port, sizeof(char) * ptxt->size);
 
-            
-            for (int i = 0; i < list_arity; i++) {
-                if (!DECODED(ei_decode_tuple_header(buf, index, &size))) {
-                    return false;
-                }
-                if ((list_head->next = plist_alloc(port, szalloc)) != NULL) {
-                    *plist = (list_head = list_head->next);
-                    char *pkey = safe_driver_alloc(port, sizeof(char) * MAXATOMLEN);
-                    if (DECODED(ei_decode_atom(buf, index, pkey))) {
-                        list_head->name = pkey;
-                    }
-                    if (!DECODED(ei_decode_long(buf, index, &item_type))) {
-                        return false;
-                    }
-                    switch (item_type) {
-                    case EDBC_OCI_DRV_TYPE_STRING:
-                        if(!DECODED(ei_get_type(buf, index, &type, &size))) {
-                            return false;
+                            ptxt->size = size + 1;
+                            ptxt->data = pval;
+                            list_head->value.buffer = ptxt;
+                            if (!DECODED(ei_decode_string(buf, index, pval))) {
+                                succeess = false;
+                            }
+                            break;
+                        case EDBC_OCI_DRV_TYPE_LONG:
+                            // ei_decode_long(buf, index, &number)
+                        default:
+                            // make error?
+                            break;
                         }
-                        ASSERT(type == ERL_STRING_EXT);
-                        TextBuffer *ptxt = zalloc(port, sizeof(TextBuffer));
-                        char *pval = safe_driver_alloc(port, sizeof(char) * ptxt->size);
-                        
-                        ptxt->size = size + 1;
-                        ptxt->data = pval;
-                        list_head->value.buffer = ptxt;
-                        if (!DECODED(ei_decode_string(buf, index, pval))) {
-                            return false;
-                        }
-                        break;
-                    case EDBC_OCI_DRV_TYPE_LONG:
-                        // ei_decode_long(buf, index, &number)
-                    default:
-                        // make error?
-                        break;
                     }
                 }
             }

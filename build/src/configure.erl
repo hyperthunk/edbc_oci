@@ -78,7 +78,7 @@ rules() ->
                    output="c_src/config.h",
                    module=cconfig_h_template, 
                    checks=[stdarg, stdint] },
-        #template{ name=port_env,
+        #template{ name=main_config,
                    pre_render=?MODULE,
                    output="rebar.config",
                    checks=[oci], data=[{oci, data}],
@@ -89,11 +89,23 @@ rules() ->
                         {arch_64,
                             "%{cc:calculate_arch_flags(environment.wordsize)}"}
                    ]},
+       #template{ name=test_config,
+                  pre_render=?MODULE,
+                  output="test.config",
+                  checks=[oci], data=[{oci, data}],
+                  defaults=[
+                       {source_files, [<<"\"c_src/*.c\"">>]},
+                       {object_files, [<<"\"c_src/*.o\"">>]},
+                       {arch_32, "%{cc:calculate_arch_flags('x86')}"},
+                       {arch_64,
+                           "%{cc:calculate_arch_flags(environment.wordsize)}"}
+                  ]},
         #template{ name=makefile,
                    module=makefile_template,
                    output="Makefile",
                    defaults=[{rebar, "${options.rebar}"}] }
     ]}].
 
-pre_render(T=#template{ name=port_env }, _, _, _) ->
-    file:delete("rebar.config"), T.
+pre_render(T=#template{ output=OutFile }, _, _, _) ->
+    %% TODO: add filesys opers to libconf
+    file:delete(OutFile), T.

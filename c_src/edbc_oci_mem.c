@@ -49,6 +49,19 @@ PropList* plist_alloc(void *port, int *szalloc) {
     return plist;
 };
 
+void plist_free(PropList *plist) {
+    PropList *next;
+    while (plist != NULL) {
+        next = (PropList*)plist->next;
+        DRV_FREE(plist->name);
+        if (plist->type == EDBC_OCI_DRV_TYPE_STRING) {
+            DRV_FREE(plist->value.buffer);
+        }
+        DRV_FREE(plist);
+        plist = next;
+    }
+}
+
 #ifdef _EDBC_OCI_HAVE_STDARG
 
 // TODO: and if not!?

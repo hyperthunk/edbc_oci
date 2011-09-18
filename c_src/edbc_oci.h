@@ -46,9 +46,6 @@ typedef int64_t     Int64;
 #error "stdint header is required"
 #endif
 
-#include <erl_driver.h>
-#include <ei.h>
-
 #ifndef DEBUG
 #define NDEBUG        // prevent assert from happening!
 #endif
@@ -79,6 +76,9 @@ extern "C" {
 
 // Cause the driver to fail (e.g., exit/unload)
 #define FAIL(p, msg) driver_failure_atom(p, msg)
+
+#define EDBC_OCI_DRV_TYPE_STRING    1l
+#define EDBC_OCI_DRV_TYPE_LONG      2l
 
 /* Shared Data Structures */
 

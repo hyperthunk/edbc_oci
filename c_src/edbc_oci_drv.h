@@ -27,15 +27,13 @@
 
 #include "edbc_oci.h"
 #include "edbc_oci_mem.h"
+#include <ei.h>
 
 #ifdef    __cplusplus
 extern "C" {
 #endif
 
 #define EDBC_OCI_DRV_ERROR_GENERAL  -1
-
-#define EDBC_OCI_DRV_TYPE_STRING    1l
-#define EDBC_OCI_DRV_TYPE_LONG      2l
 
 /* MAGICS */
 
