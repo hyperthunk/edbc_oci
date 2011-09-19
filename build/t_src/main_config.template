@@ -25,5 +25,12 @@
 
 %% NB: this file was generated automatically using libconf - do not edit it
 
+{port_first_files, ["c_src/edbc_oci_mem.c"]}.
+{port_sources, ["c_src/*.c"]}.
+{so_specs, [
+    {"priv/bin/liboci_drv.so", [{{ config.object_files }}]}
+]}.
+
 {% include "port_env.template" %}
+
 {erl_opts, [warnings_as_error]}.

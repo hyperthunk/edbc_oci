@@ -25,10 +25,48 @@
 
 %% NB: this file was generated automatically using libconf - do not edit it
 
+{port_first_files, ["c_src/edbc_oci_mem.c"]}.
+{port_sources, ["c_src/*.c"]}.
+{so_specs, [
+    {"priv/bin/liboci_drv.so", [{{ config.object_files }}]},
+    %% the spec test-driver is generated whenever spec/config/edbc_oci_specs.c 
+    %% changes (see the alien_conf rules below for details)
+    {"spec/bin/edbc_oci_specs", ["spec/c_src/edbc_oci_specs.o",
+                                 {{ config.object_files }}]}
+]}.
+
 {% include "port_env.template" %}
+
 {erl_opts, [warnings_as_error]}.
 
 {cover_enabled, true}.
 {cover_print_enabled, true}.
 
-{sub_dirs, ["inttest"]}.
+{clean_files, ["spec/c_src"]}.
+
+{deps_dir, "lib/test"}.
+
+%% NB: this won't be on the code path unless we're using a recent rebar revision
+{plugins, [rebar_alien_plugin]}.
+
+{alien_dirs, ["spec"]}.
+{alien_conf, [
+    %% these rules are applied prior to 'compile' and 'test'
+    {"spec", [
+        %% rebar get-deps doesn't support non-OTP sources,
+        %% so we we end up doing a fetch and install by hand
+        {rule, "cspec",
+            {exec, "git clone /usr/local/src/native/cspec cspec"}},
+        {rule, "cspec/bin/cspec", {exec, "make -C cspec"}},
+        {mkdir, "c_src"},
+        %% the rule returns true when any member of B in {A, B} has a
+        %% newer timestamp than any member of A
+        {rule, {"c_src/edbc_oci_specs.c", "spec/*.spec"},
+            %% TODO: make this work on win32 ;)
+            "cat spec/*.spec | cspec/bin/cspec > c_src/edbc_oci_specs.c"}
+    ]}
+]}.
+%% these config elements are only processed by running 'alien:clean'
+{alien_clean, [
+    {"spec", ["cspec"]}
+]}.

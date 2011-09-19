@@ -1,10 +1,4 @@
 
-{port_first_files, ["c_src/edbc_oci_mem.c"]}.
-{port_sources, ["c_src/*.c"]}.
-{so_specs, [
-    {"priv/bin/liboci_drv.so", [{{ config.object_files }}]}
-]}.
-
 %% TODO: tighten up the logical around choosing -arch flags
 {port_envs, [
     {"DRV_CFLAGS", 

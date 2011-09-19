@@ -4,4 +4,5 @@ pushd .
 cd build
 rebar get-deps compile 
 rebar skip_deps=true escriptize
+echo "you now need to run ./configure [options] to continue the build process"
 popd
