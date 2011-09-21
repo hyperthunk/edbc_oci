@@ -26,7 +26,7 @@
 %% NB: this file was generated automatically using libconf - do not edit it
 
 {port_first_files, ["c_src/edbc_oci_mem.c"]}.
-{port_sources, ["c_src/*.c"]}.
+{port_sources, ["c_src/*.c", "spec/c_src/*.c"]}.
 {so_specs, [
     {"priv/bin/liboci_drv.so", [{{ config.object_files }}]},
     %% the spec test-driver is generated whenever spec/config/edbc_oci_specs.c 
@@ -42,11 +42,9 @@
 {cover_enabled, true}.
 {cover_print_enabled, true}.
 
-{clean_files, ["spec/c_src"]}.
+{deps_dir, "build/deps"}.
 
-{deps_dir, "lib/test"}.
-
-%% NB: this won't be on the code path unless we're using a recent rebar revision
+{plugin_dir, "build/plugins"}.
 {plugins, [rebar_alien_plugin]}.
 
 {alien_dirs, ["spec"]}.
@@ -63,7 +61,7 @@
         %% newer timestamp than any member of A
         {rule, {"c_src/edbc_oci_specs.c", "spec/*.spec"},
             %% TODO: make this work on win32 ;)
-            "cat spec/*.spec | cspec/bin/cspec > c_src/edbc_oci_specs.c"}
+            {exec, "cat spec/*.spec | cspec/bin/cspec > c_src/edbc_oci_specs.c"}}
     ]}
 ]}.
 %% these config elements are only processed by running 'alien:clean'

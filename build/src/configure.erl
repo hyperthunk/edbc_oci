@@ -94,11 +94,13 @@ rules() ->
                   output="test.config",
                   checks=[oci], data=[{oci, data}],
                   defaults=[
-                       {source_files, [<<"\"c_src/*.c\"">>]},
-                       {object_files, [<<"\"c_src/*.o\"">>]},
-                       {arch_32, "%{cc:calculate_arch_flags('x86')}"},
-                       {arch_64,
-                           "%{cc:calculate_arch_flags(environment.wordsize)}"}
+                        {additional_includes, [<<"spec">>, 
+                                               <<"cspec/src">>]},
+                        {source_files, [<<"\"c_src/*.c\"">>]},
+                        {object_files, [<<"\"c_src/*.o\"">>]},
+                        {arch_32, "%{cc:calculate_arch_flags('x86')}"},
+                        {arch_64,
+                            "%{cc:calculate_arch_flags(environment.wordsize)}"}
                   ]},
         #template{ name=makefile,
                    module=makefile_template,
