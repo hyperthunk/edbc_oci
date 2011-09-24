@@ -26,13 +26,9 @@
 %% NB: this file was generated automatically using libconf - do not edit it
 
 {port_first_files, ["c_src/edbc_oci_mem.c"]}.
-{port_sources, ["c_src/*.c", "spec/c_src/*.c"]}.
+{port_sources, ["c_src/*.c"]}.
 {so_specs, [
-    {"priv/bin/liboci_drv.so", [{{ config.object_files }}]},
-    %% the spec test-driver is generated whenever spec/config/edbc_oci_specs.c 
-    %% changes (see the alien_conf rules below for details)
-    {"spec/bin/edbc_oci_specs", ["spec/c_src/edbc_oci_specs.o",
-                                 {{ config.object_files }}]}
+    {"priv/bin/liboci_drv.so", [{{ config.object_files }}]}
 ]}.
 
 {% include "port_env.template" %}
@@ -51,20 +47,32 @@
 {alien_conf, [
     %% these rules are applied prior to 'compile' and 'test'
     {"spec", [
-        %% rebar get-deps doesn't support non-OTP sources,
-        %% so we we end up doing a fetch and install by hand
-        {rule, "cspec",
-            {exec, "git clone /usr/local/src/native/cspec cspec"}},
-        {rule, "cspec/bin/cspec", {exec, "make -C cspec"}},
-        {mkdir, "c_src"},
-        %% the rule returns true when any member of B in {A, B} has a
-        %% newer timestamp than any member of A
-        {rule, {"c_src/edbc_oci_specs.c", "spec/*.spec"},
-            %% TODO: make this work on win32 ;)
-            {exec, "cat spec/*.spec | cspec/bin/cspec > c_src/edbc_oci_specs.c"}}
+        {command, 'spec:compile', "build cspec and all tests", [
+            %% rebar get-deps doesn't support non-OTP sources,
+            %% so we we end up doing a fetch and install by hand
+            {rule, "cspec",
+                {exec, "git clone https://github.com/visionmedia/cspec.git cspec"}},
+            {rule, "cspec/bin/cspec", {exec, "make -C cspec"}},
+            {rule, "c_src", {mkdir, "c_src"}},
+            {rule, "bin", {mkdir, "bin"}},
+            %% the rule returns true when any member of B in {A, B} has a
+            %% newer timestamp than any member of A
+            {rule, {"c_src/edbc_oci_specs.c", "spec/*.spec"},
+                %% TODO: make this work on win32 ;)
+                {exec, "cat spec/*.spec | cspec/bin/cspec > c_src/edbc_oci_specs.c"}},
+
+            {rule, {"bin/edbc_oci_specs", "c_src/edbc_oci_specs.c"},
+                %% TODO: use the libconf/cc module to generate this
+                {exec, "cc -Icspec/src cspec/build/cspec.o c_src/edbc_oci_specs.c "
+                       "-o bin/edbc_oci_specs"}}
+        ]},
+        {command, 'spec:test', "run all test specs", [
+            {exec, "bin/edbc_oci_specs"}
+        ]}
     ]}
 ]}.
+
 %% these config elements are only processed by running 'alien:clean'
 {alien_clean, [
-    {"spec", ["cspec"]}
+    {"spec", ["spec/cspec"]}
 ]}.

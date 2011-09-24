@@ -2,13 +2,13 @@
 %% TODO: tighten up the logical around choosing -arch flags
 {port_envs, [
     {"DRV_CFLAGS", 
-{%ifequal oci_data.arch "x86" %}
+{% ifequal oci_data.arch "x86" %}
                     "$DRV_CFLAGS {{ config.arch_32 }}"
 {% else %}          "{{ config.arch_64 }}"{% endifequal %}
                     " -Werror -I c_src -std=c99 "
-{%if config.additional_includes %}
+{% if config.additional_includes %}
                     "{% for addinc in config.additional_includes %}-I {{ addinc }} {% endfor %}"
-{%endif %}
+{% endif %}
                     "{% for incl in oci_data.incl_path %}-I {{ incl }} {% endfor %}"
                     " $ERL_CFLAGS"
                     "{% if options.debug %} -DDEBUG {% endif %}"
