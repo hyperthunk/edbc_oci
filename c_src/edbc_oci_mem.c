@@ -53,7 +53,9 @@ void plist_free(PropList *plist) {
     PropList *next;
     while (plist != NULL) {
         next = (PropList*)plist->next;
-        DRV_FREE(plist->name);
+        if (plist->name != NULL) {
+            DRV_FREE(plist->name);
+        }
         if (plist->type == EDBC_OCI_DRV_TYPE_STRING) {
             DRV_FREE(plist->value.buffer);
         }

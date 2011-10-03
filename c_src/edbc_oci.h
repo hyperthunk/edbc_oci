@@ -77,8 +77,9 @@ extern "C" {
 // Cause the driver to fail (e.g., exit/unload)
 #define FAIL(p, msg) driver_failure_atom(p, msg)
 
-#define EDBC_OCI_DRV_TYPE_STRING    1l
-#define EDBC_OCI_DRV_TYPE_LONG      2l
+#define EDBC_OCI_DRV_TYPE_UNASSIGNED 0l
+#define EDBC_OCI_DRV_TYPE_STRING     2l
+#define EDBC_OCI_DRV_TYPE_LONG       3l
 
 /* Shared Data Structures */
 

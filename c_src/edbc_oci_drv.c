@@ -47,30 +47,33 @@ decode_proplist(void *port, PropList **plist, int *szalloc,
         int list_arity = 0;
         if (DECODED(ei_decode_list_header(buf, index, &list_arity))) {
             ASSERT(size == list_arity);
-            if(list_arity < 1) {
+            if (list_arity < 1) {
                 succeess = false;
             } else {
                 for (int i = 0; i < list_arity; i++) {
                     if (!DECODED(ei_decode_tuple_header(buf, index, &size))) {
-                        succeess = false;
-                        break;
+                        return false;
                     }
                     if ((list_head->next = plist_alloc(port, szalloc)) != NULL) {
                         *plist = (list_head = list_head->next);
+                        list_head->type = EDBC_OCI_DRV_TYPE_UNASSIGNED;
                         char *pkey = safe_driver_alloc(port, sizeof(char) * MAXATOMLEN);
-                        if (DECODED(ei_decode_atom(buf, index, pkey))) {
-                            list_head->name = pkey;
-                        }
+                        
+                        if (!DECODED(ei_decode_atom(buf, index, pkey))) {
+                            return false;
+                        } 
+                        
+                        list_head->name = pkey;
+                        
                         if (!DECODED(ei_decode_long(buf, index, &item_type))) {
-                            succeess = false;
-                            break;
+                            return false;
                         }
                         list_head->type = item_type;
+                        
                         switch (item_type) {
-                        case EDBC_OCI_DRV_TYPE_STRING:
+                        case EDBC_OCI_DRV_TYPE_STRING: {
                             if(!DECODED(ei_get_type(buf, index, &type, &size))) {
-                                succeess = false;
-                                break;
+                                return false;
                             }
                             ASSERT(type == ERL_STRING_EXT);
                             TextBuffer *ptxt = zalloc(port, sizeof(TextBuffer));
@@ -80,11 +83,18 @@ decode_proplist(void *port, PropList **plist, int *szalloc,
                             ptxt->data = pval;
                             list_head->value.buffer = ptxt;
                             if (!DECODED(ei_decode_string(buf, index, pval))) {
-                                succeess = false;
+                                return false;
                             }
                             break;
-                        case EDBC_OCI_DRV_TYPE_LONG:
-                            // ei_decode_long(buf, index, &number)
+                        }
+                        case EDBC_OCI_DRV_TYPE_LONG: {
+                            long num;
+                            if (!DECODED(ei_decode_long(buf, index, &num))) {
+                                return false;
+                            }
+                            list_head->value.number = num;
+                            break;
+                        }
                         default:
                             // make error?
                             break;
@@ -109,7 +119,7 @@ start_driver(ErlDrvPort port, char *buff) {
     }
     d->port = (void*)port;
     d->port_owner = driver_connected(port);
-    d->port_lock = erl_drv_mutex_create("bdberl_port_lock");
+    d->port_lock = erl_drv_mutex_create("edbc_oci_port_lock");
     return (ErlDrvData)d;
 };
 
@@ -151,7 +161,16 @@ call(ErlDrvData drv_data, unsigned int command, char *buf,
         PropList *plist;
         int szalloc = 0;
         if (decode_proplist(d->port, &plist, &szalloc, buf, &index)) {
-            // do something with it....
+            PropList *pcurrent = plist;
+            while (pcurrent) {
+                if (pcurrent->type == EDBC_OCI_DRV_TYPE_STRING) {
+                    CONSOLE("Property %s = %s", pcurrent->name, 
+                                                pcurrent->value.buffer->data);
+                } else if (pcurrent->type == EDBC_OCI_DRV_TYPE_LONG) {
+                    CONSOLE("Property %s = %li", pcurrent->name, 
+                                                 pcurrent->value.number);
+                }
+            }
         }
     }
 
