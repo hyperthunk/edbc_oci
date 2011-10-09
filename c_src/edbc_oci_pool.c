@@ -1,6 +1,6 @@
 /*
  * -----------------------------------------------------------------------------
- * Copyright (c) 2008-2010 Tim Watson (watson.timothy@gmail.com)
+ * Copyright (c) 2011 Tim Watson (watson.timothy@gmail.com)
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -21,42 +21,5 @@
  * THE SOFTWARE.
  * -----------------------------------------------------------------------------
  */
-
-#ifndef _EDBC_OCI_MEM_H
-#define _EDBC_OCI_MEM_H
-
 #include "edbc_oci.h"
 
-#ifdef    __cplusplus
-extern "C" {
-#endif
-
-#ifndef DRV_ALLOC
-#define DRV_ALLOC(p, size) safe_driver_alloc(p, size)
-#endif
-
-// NULL safe driver_free wrapper
-#ifndef DRV_FREE
-#define DRV_FREE(x) if (x != NULL) driver_free(x)
-#endif
-
-void* safe_driver_alloc(void*, size_t);
-void* zalloc(void*, size_t);
-PropList* plist_alloc(void*, int*);
-void plist_free(PropList*);
-
-#ifdef _EDBC_OCI_HAVE_STDARG
-
-#include <stdarg.h>
-
-/* Tries to allocate heap space of 'size'. If this fails, the pointers
-     in the varags array are freed one by one and the program fails. */
-    void* try_driver_alloc(void*, size_t, void*, ...);
-
-#endif
-
-#ifdef    __cplusplus
-}
-#endif
-
-#endif    /* _EDBC_OCI_MEM_H */

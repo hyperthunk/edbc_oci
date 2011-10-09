@@ -71,14 +71,14 @@ void plist_free(PropList *plist) {
 /* Tries to allocate heap space of 'size'. If this fails, the pointers
      in the varags array are freed one by one and the program fails. */
 void* try_driver_alloc(void *port, size_t size, void* pfree, ...) {
-    void* val = driver_alloc(size);
+    void* val = safe_driver_alloc(port, size);
     if (val == NULL) {
         va_list ap;
         void* p;
 
         va_start(ap, pfree);
         while ((p = va_arg(ap, void*)) != NULL) {
-            driver_free(p);
+            DRV_FREE(p);
         }
         va_end(ap);
 

@@ -30,25 +30,25 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <errno.h>
 
 #ifdef _EDBC_OCI_HAVE_STDINT
 #include <stdint.h>
-typedef uint8_t     UInt8;
-typedef uint16_t    UInt16;
-typedef uint32_t    UInt32;
-typedef uint64_t    UInt64;
-typedef int8_t      Int8;
-typedef int16_t     Int16;
-typedef int32_t     Int32;
-typedef int64_t     Int64;
 #else
-// TODO: consider other approaches to this
 #error "stdint header is required"
 #endif
 
-#ifndef DEBUG
-#define NDEBUG        // prevent assert from happening!
+#ifdef _EDBC_OCI_HAVE_STDARG
+#include <stdarg.h>
+#else
+#error support for variadic functions is required to build this module!
 #endif
+
+#include <erl_driver.h>
+
+// #ifndef DEBUG
+// #define NDEBUG        // prevent assert from happening!
+// #endif
 
 // we also allow test cases to override the *normal* assert behaviour
 #ifndef _TEST_ASSERT
@@ -60,31 +60,99 @@ typedef int64_t     Int64;
 extern "C" {
 #endif
 
-/* logging */
-
-#ifdef DEBUG
-// TODO: define proper logging infrastructure
-/* dev debugging hacks - not for use in test/prod */
-// wrappers for fprintf (uses __VA_ARGS__ *unsafely* - dev builds only)
-#define CONSOLE(str, ...) SPIT(stderr, str, __VA_ARGS__)
-#define SPIT(stream, str, ...) fprintf(stream, str, ##__VA_ARGS__)
-#else
-#define CONSOLE(str, ...)
-#endif
-
-/* general utils */
-
-// Cause the driver to fail (e.g., exit/unload)
-#define FAIL(p, msg) driver_failure_atom(p, msg)
-
 #define EDBC_OCI_DRV_TYPE_UNASSIGNED 0l
 #define EDBC_OCI_DRV_TYPE_STRING     2l
 #define EDBC_OCI_DRV_TYPE_LONG       3l
 
-/* Shared Data Structures */
+#define INITIAL_THREAD_POOL_COUNT 1
+#define PORT_LABEL_SIZE 64
+
+typedef struct logging_descriptor {
+    FILE *              fd;     /* Used with atomic write() ops only */
+    uint32_t            mask;   /* Used to control logging levels and options */
+    ErlDrvMutex *       mutex;      /* for avoiding interleaving fprintf output */
+
+    // Invariants
+    //      if (mask & ENABLE_SASL_LOGGING) == true
+    //      then sasl_logging_pid must point to a valid (running) process
+    //      else send_term_mutex == NULL
+
+    bool                send_term_requires_lock; /* if we are in SMP mode? */
+    ErlDrvTermData      sasl_logging_pid;   /* pid for the sasl logging wrapper */
+    ErlDrvMutex *       send_term_mutex; /* shared ~ EdbcOciPortData->mutex */
+    ErlDrvPort          port;           /* used by send_term */
+    ErlDrvTermData      log_msg_tag;    /* atom tag for logging messages */
+} Logger;
+
+/* much of this has been taken/adapted from edtk, which is turn in was adapted from
+the code in erl_async.c - the major difference is that we don't require the calls
+that return data to the client process to run in an emulator thread, so we don't
+worry about signalling that jobs have completed. */
+
+typedef struct pool_entry {
+    /* these fields are only accessed by code holding
+     * the pool_t->mutex and are not touched otherwise */
+    struct pool_entry *         next;
+    struct pool_entry *         prev;
+
+    /* protects the client_* and async_* fields */
+    ErlDrvMutex *               state_mutex;
+    bool                        client_cancelled;
+    ErlDrvTermData              client_pid;
+    ErlDrvMonitor *             client_monitor;
+
+    /* async data/functions assigned when a task is submitted */
+    void *                      async_data;
+    void                        (*async_invoke)(void*);
+    void                        (*async_free)(void*);
+
+    Logger *                    log;
+
+    /* thread id used to join during termination routines */
+    ErlDrvTid                   tid;
+} PoolEntry;
 
 typedef struct {
-    Int32 size; // do we know for sure this is big enough?
+    char                    label[64];
+    Logger *                log;
+
+    ErlDrvMutex *           mutex;  /* general mutex; protects queue and all other modifyable members */
+    ErlDrvCond *            queue_pending_cv;
+    PoolEntry *             queue_head;
+    PoolEntry *             queue_tail;
+    unsigned int            queue_len;
+    unsigned int            queue_limit;
+
+    /* Invariants
+     *  0 <= num_created_threads
+     *  0 <= curr_enqueued_poison_pills
+     *  0 <= (num_created_threads - curr_enqueued_poison_pills)
+     *  0 <= curr_idle_threads <= (num_created_threads - curr_enqueued_poison_pills)
+     *
+     * We do allow set_thread_count to 0 (new operations on that threadpool will be queued up
+     * until threads are added -- should rarely if ever be needed of course).
+     */
+    int                   num_created_threads;
+    int                   curr_enqueued_poison_pills;
+    int                   curr_idle_threads;
+
+} WorkerPool;
+
+/* Port Data - we need this defined up front as it's used elsewhere... */
+typedef struct {
+    ErlDrvPort              port;           /* The port instance */
+    ErlDrvMutex *           mutex;          /* Protects this data structure */
+    ErlDrvTermData          owner;          /* Pid of the owning process */
+    Logger *                log;            /* Logger structure */
+    WorkerPool *            worker_pool;    /* private thread pool */
+    /*
+    WorkerPool *            house_keeper;  */
+    char                    label[PORT_LABEL_SIZE + 1];
+    bool                    send_term_requires_lock; /* if we are in SMP mode? */
+} EdbcOciPortData;
+
+typedef struct {
+    int32_t size; // do we know for sure this is big enough?
     char *data;
 } TextBuffer;
 
@@ -97,6 +165,13 @@ typedef struct plist {
     } value;
     void *next;
 } PropList;
+
+/* general utils */
+
+// Cause the driver to fail (e.g., exit/unload)
+#ifndef FAIL
+#define FAIL(p, msg) driver_failure_atom(p, msg)
+#endif
 
 #ifdef    __cplusplus
 }

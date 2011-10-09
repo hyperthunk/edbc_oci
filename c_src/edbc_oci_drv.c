@@ -112,15 +112,25 @@ decode_proplist(void *port, PropList **plist, int *szalloc,
 // Called by the emulator when the driver is starting.
 static ErlDrvData
 start_driver(ErlDrvPort port, char *buff) {
-    DriverData *d = zalloc(port, sizeof(DriverData));
-    if (d == NULL) {
+    EdbcOciPortData *pd = zalloc(port, sizeof(EdbcOciPortData));
+    if (pd == NULL) {
         // TODO: use ERL_DRV_ERROR_ERRNO and provide out-of-memory info
         return ERL_DRV_ERROR_GENERAL;
     }
-    d->port = (void*)port;
-    d->port_owner = driver_connected(port);
-    d->port_lock = erl_drv_mutex_create("edbc_oci_port_lock");
-    return (ErlDrvData)d;
+
+    ErlDrvSysInfo sys_info;
+    driver_system_info(&sys_info, sizeof(ErlDrvSysInfo));
+    pd->send_term_requires_lock = (sys_info->smp_support == 0);
+    pd->port = (void*)port;
+    pd->owner = driver_connected(port);
+    pd->mutex = erl_drv_mutex_create("edbc_oci_port_instance_mutex");
+
+    // some fields can't be initialized until we've got our hands on 
+    // the relevant configuration data at runtime...
+    pd->worker_pool = NULL;
+    pd->log = NULL;
+    
+    return (ErlDrvData)pd;
 };
 
 // Called by the emulator when the driver is stopping.
@@ -131,59 +141,6 @@ stop_driver(ErlDrvData drv_data) {
 };
 
 /*
-This function is called from erlang:port_call/3. It works a lot like the control call-back,
-but uses the external term format for input and output.
-- command is an integer, obtained from the call from erlang (the second argument to erlang:port_call/3).
-- buf and len provide the arguments to the call (the third argument to erlang:port_call/3). They're decoded using ei.
-- rbuf points to a return buffer, rlen bytes long.
-
-The return data (written to *rbuf) should be a valid erlang term in the external term format. This is converted to an
-erlang term and returned by erlang:port_call/3 to the caller. If more space than rlen bytes is needed to return data,
-*rbuf can be set to memory allocated with driver_alloc. This memory will be freed automatically after call has returned.
-The return value (of this callback function) is the number of bytes returned in *rbuf. If ERL_DRV_ERROR_GENERAL is returned
-(or in fact, anything < 0), erlang:port_call/3 will throw a BAD_ARG.
-*/
-static int
-call(ErlDrvData drv_data, unsigned int command, char *buf,
-    int len, char **rbuf, int rlen, unsigned int *flags) {
-
-    int i;
-    int index = 0;
-    int rindex = 0;
-    char *data;
-    DriverData *d = (DriverData*)drv_data;
-
-    if(!DECODED(ei_decode_version(buf, &index, &i))) {
-        return EDBC_OCI_DRV_ERROR_GENERAL;
-    };
-
-    if (command == INIT_OCI_COMMAND) {
-        PropList *plist;
-        int szalloc = 0;
-        if (decode_proplist(d->port, &plist, &szalloc, buf, &index)) {
-            PropList *pcurrent = plist;
-            while (pcurrent) {
-                if (pcurrent->type == EDBC_OCI_DRV_TYPE_STRING) {
-                    CONSOLE("Property %s = %s", pcurrent->name, 
-                                                pcurrent->value.buffer->data);
-                } else if (pcurrent->type == EDBC_OCI_DRV_TYPE_LONG) {
-                    CONSOLE("Property %s = %li", pcurrent->name, 
-                                                 pcurrent->value.number);
-                }
-            }
-        }
-    }
-
-    ei_encode_version(*rbuf, &rindex);
-#ifdef _DRV_SASL_LOGGING
-    // TODO: pull the logging_port and install it....
-#endif
-    ei_encode_atom(*rbuf, &rindex, "ok");
-    DRV_FREE(data);
-    return(rindex);
-};
-
-/*
 This function is called whenever the port is written to. The port should be in binary mode, see open_port/2.
 The ErlIOVec contains both a SysIOVec, suitable for writev, and one or more binaries. If these binaries should be retained,
 when the driver returns from outputv, they can be queued (using driver_enq_bin for instance), or if they are kept in a
@@ -191,16 +148,6 @@ static or global variable, the reference counter can be incremented.
 */
 static void
 outputv(ErlDrvData drv_data, ErlIOVec *ev) {
-
-};
-
-/*
-This function is called after an asynchronous call has completed. The asynchronous
-call is started with driver_async. This function is called from the erlang emulator thread,
-as opposed to the asynchronous function, which is called in some thread (if multithreading is enabled).
-*/
-static void
-ready_async(ErlDrvData drv_data, ErlDrvThreadData data) {
 
 };
 
@@ -219,7 +166,7 @@ static ErlDrvEntry driver_entry = {
     NULL,               /* control */
     NULL,               /* timeout */
     outputv,            /* outputv */
-    ready_async,        /* ready_async, called (from the emulator thread) after an asynchronous call has completed. */
+    NULL,               /* ready_async, called (from the emulator thread) after an asynchronous call has completed. */
     NULL,               /* flush */
     call,               /* call */
     NULL                /* event */

@@ -26,8 +26,8 @@
 #define _EDBC_OCI_DRV_H
 
 #include "edbc_oci.h"
+#include "edbc_oci_log.h"
 #include "edbc_oci_mem.h"
-#include <ei.h>
 
 #ifdef    __cplusplus
 extern "C" {
@@ -39,37 +39,27 @@ extern "C" {
 
 // magics for command identification
 // the corresponding erlang definitions can be found in edbc_oci_protocol.erl
-#define INIT_OCI_COMMAND (UInt32)1
-#define OTHER_COMMAND (UInt32)2
+#define INIT_OCI_COMMAND (uint32_t)1
+#define OTHER_COMMAND (uint32_t)2
 
-/* ei goodness, used in driver_call */
-#define DECODED(decode) (decode == 0)
+typedef enum {
+    READER_NO_ERROR         = 0,
+    READER_READ_ALL_DATA    = 1,
+    READER_PACKING_ERROR    = 2
+} ReaderError;
 
-/**
- * DriverData holds port (driver) instance data
- */
 typedef struct {
-    ErlDrvPort port;            /* The port instance */
-    ErlDrvMutex* port_lock;     /* Protects this data structure */
-    ErlDrvTermData port_owner;  /* Pid of the owning process */
-
-    /*
-    int async_op;               // Value indicating what async op is pending
-    int async_flags;            // Flags for the async op command
-    */
-
-#ifdef _EDBC_OCI_USE_PRIVATE_TPOOL
-    TPoolJob* async_job;        /* Active job on the thread pool */
-    TPool* async_pool;          /* Pool the async job is running on */
-#endif
-} DriverData;
+    ErlIOVec *    ev;
+    size_t        row;
+    size_t        column;
+    ReaderError   last_error;
+} Reader;
 
 static bool decode_proplist(void*, PropList**, int*, const char*, int*);
 static ErlDrvData start_driver(ErlDrvPort, char*);
 static void stop_driver(ErlDrvData);
-static int call(ErlDrvData, unsigned int, char*, int, char**, int, unsigned int*);
+/* static int call(ErlDrvData, unsigned int, char*, int, char**, int, unsigned int*); */
 static void outputv(ErlDrvData, ErlIOVec*);
-static void ready_async(ErlDrvData, ErlDrvThreadData);
 
 #ifdef    __cplusplus
 }

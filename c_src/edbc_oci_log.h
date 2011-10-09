@@ -22,8 +22,8 @@
  * -----------------------------------------------------------------------------
  */
 
-#ifndef _EDBC_OCI_MEM_H
-#define _EDBC_OCI_MEM_H
+#ifndef _EDBC_OCI_LOG_H
+#define _EDBC_OCI_LOG_H
 
 #include "edbc_oci.h"
 
@@ -31,32 +31,36 @@
 extern "C" {
 #endif
 
-#ifndef DRV_ALLOC
-#define DRV_ALLOC(p, size) safe_driver_alloc(p, size)
-#endif
+#define ENABLE_DEBUG_LOGGING        ((uint32_t)0x00000001)
+#define ENABLE_INFO_LOGGING         ((uint32_t)0x00000002)
+#define ENABLE_WARN_LOGGING         ((uint32_t)0x00000004)
+#define ENABLE_ERROR_LOGGING        ((uint32_t)0x00000008)
+#define RESERVED_MASK_LOGGING       ((uint32_t)0x40000000)
+#define ENABLE_SASL_LOGGING         ((uint32_t)0x80000000)
 
-// NULL safe driver_free wrapper
-#ifndef DRV_FREE
-#define DRV_FREE(x) if (x != NULL) driver_free(x)
-#endif
+#define DEBUG(L, M, ...)            LOG(ENABLE_DEBUG_LOGGING, L, M, ##__VA_ARGS__)
+#define INFO(L, M, ...)             LOG(ENABLE_INFO_LOGGING, L, M, ##__VA_ARGS__)
+#define WARN(L, M, ...)             LOG(ENABLE_WARN_LOGGING, L, M, ##__VA_ARGS__)
+#define ERROR(L, M, ...)            LOG(ENABLE_ERROR_LOGGING, L, M, ##__VA_ARGS__)
+#define LOG(lv, lg, fmt, ap)        write_log(lv, lg, fmt, ap)
 
-void* safe_driver_alloc(void*, size_t);
-void* zalloc(void*, size_t);
-PropList* plist_alloc(void*, int*);
-void plist_free(PropList*);
+Logger*
+open_log(EdbcOciPortData*   /*port_data*/,
+         const char*        /*log_file*/,
+         uint32_t           /*modes*/);
 
-#ifdef _EDBC_OCI_HAVE_STDARG
+void
+set_flags(Logger*           /*logger*/,
+          uint32_t          /*flags*/);
 
-#include <stdarg.h>
-
-/* Tries to allocate heap space of 'size'. If this fails, the pointers
-     in the varags array are freed one by one and the program fails. */
-    void* try_driver_alloc(void*, size_t, void*, ...);
-
-#endif
+int
+write_log(uint32_t          /*level*/,
+          Logger*           /*logger*/,
+          char*             /*format*/,
+          ...);
 
 #ifdef    __cplusplus
 }
 #endif
 
-#endif    /* _EDBC_OCI_MEM_H */
+#endif    /* _EDBC_OCI_LOG_H */

@@ -1,6 +1,6 @@
 %% -----------------------------------------------------------------------------
 %%
-%% EDBC OCI
+%% EDBC OCI - port logging interface
 %%
 %% Copyright (c) 2011 Tim Watson (watson.timothy@gmail.com)
 %%
@@ -22,34 +22,19 @@
 %% OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 %% THE SOFTWARE.
 %% -----------------------------------------------------------------------------
--module(edbc_oci_sup).
+-module(edbc_oci_plog).
 
--behaviour(supervisor).
+%% These constants mirror edbc_oci_log.h
+-define(ENABLE_DEBUG_LOGGING,       16#00000001).
+-define(ENABLE_INFO_LOGGING,        16#00000002).
+-define(ENABLE_WARN_LOGGING,        16#00000004).
+-define(ENABLE_ERROR_LOGGING,       16#00000008).
+-define(RESERVED_MASK_LOGGING,      16#40000000).
+-define(ENABLE_SASL_LOGGING,        16#80000000).
 
-%% API
--export([start_link/0]).
-
-%% Supervisor callbacks
--export([init/1]).
-
-%% Helper macro for declaring children of supervisor
--define(CHILD(I, Type), {I, {I, start_link, []}, permanent, 5000, Type, [I]}).
-
-%% ===================================================================
-%% API functions
-%% ===================================================================
-
-start_link() ->
-    supervisor:start_link({local, ?MODULE}, ?MODULE, []).
-
-%% ===================================================================
-%% Supervisor callbacks
-%% ===================================================================
-
-init([]) ->
-    {ok, {{rest_for_one, 5, 10}, [
-        {dxkit_event_subsystem,
-            {dxkit_event_sup, start_link, []},
-             permanent, 5000, supervisor, [supervisor]}
-    ]}}.
+%% we fold these options over 0 to create the correct mask
+%% CommandIOList = [ <<?$(ABBREV)_ADJUST_PORT_LOGGING, (size(TagBin)):32/unsigned-integer>>, 
+%%                  TagBin, 
+%%                  <<OperationValue:32, Flags_FlagMask:32>> ],
+%% true = erlang:port_command(ErlangPort, CommandIOList),
 
