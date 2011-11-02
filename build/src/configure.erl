@@ -105,6 +105,7 @@ rules() ->
         #template{ name=makefile,
                    module=makefile_template,
                    output="Makefile",
+                   overwrite=true,
                    defaults=[{rebar, "${options.rebar}"}] }
     ]}].
 

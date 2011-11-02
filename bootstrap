@@ -6,14 +6,14 @@ pushd .
 cd build
 if [[ "$1" = "--distclean" ]]
     then 
-        rebar plugins:clean clean skip_deps=true "$2"
+        rebar plugins-clean clean skip_deps=true "$2"
     else    
         if [[ "$1" = "-v" ]]
             then VERBOSE="$1"
         fi
         rebar get-deps compile $VERBOSE
         rebar escriptize skip_deps=true $VERBOSE
-        rebar plugins:install skip_deps=true $VERBOSE
+        rebar install-plugins skip_deps=true $VERBOSE
         echo "you now need to run ./configure [options] to continue the build process"
 fi
 popd
